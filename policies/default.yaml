@@ -1,0 +1,58 @@
+# AgentShield — example policy file
+#
+# Evaluation order (most specific wins first): tools -> agents -> global.
+# The first matching rule within the highest-precedence matching scope
+# short-circuits evaluation. If nothing matches anywhere, the action is
+# ALLOWed by default.
+#
+# operator options: gt, gte, lt, lte, eq, neq, in_list, contains, regex
+# action_on_match options: block, flag, allow
+
+global:
+  # Hard ceiling: no agent, anywhere, may move more than $5000 in one action.
+  - field: amount
+    operator: gt
+    value: 5000
+    action_on_match: block
+
+agents:
+  billing-bot:
+    # billing-bot specifically is capped much lower than the global ceiling.
+    - field: amount
+      operator: gt
+      value: 500
+      action_on_match: block
+
+    # Payments in an unapproved currency are flagged for human review
+    # rather than executed silently.
+    - field: currency
+      operator: in_list
+      value: ["USD", "INR", "EUR"]
+      action_on_match: allow
+
+  research-bot:
+    # research-bot should never write to disk or execute shell commands —
+    # this is enforced at the tool scope below, but kept here too as an
+    # explicit example of an agent-level restriction.
+    - field: url
+      operator: regex
+      value: "^https://.*"
+      action_on_match: allow
+
+tools:
+  send_email:
+    # Emails to addresses outside the company domain are flagged, not
+    # auto-sent, so a human confirms intent first.
+    - field: recipient
+      operator: regex
+      value: ".*@internal\\.company\\.com$"
+      action_on_match: allow
+
+  delete_file:
+    # Deleting anything is always flagged for review — never silently
+    # blocked (so legitimate cleanup isn't broken) and never silently
+    # allowed (so it's always visible in the audit trail).
+    - field: path
+      operator: regex
+      value: ".*"
+      action_on_match: flag
